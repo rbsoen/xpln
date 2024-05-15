@@ -5,10 +5,13 @@ type ProseBlock struct {
 }
 
 type CodeBlock struct {
-	Name    string
-	Content string
+	Name     string
+	Language string
+	Content  string
 }
 
 type Renderable interface {
 	ToHTML() string
 }
+
+type Blocks []interface{}
