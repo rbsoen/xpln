@@ -16,6 +16,8 @@ var linkDetect = regexp.MustCompile(
 	`^(\s*)@{(.+)}\s*$`,
 )
 
+var codeUseMap = make(map[string][]string)
+
 func (b ProseBlock) ToHTML() string {
 	p := parser.NewWithExtensions(parser.CommonExtensions | parser.AutoHeadingIDs)
 	doc := p.Parse([]byte(b.Content))
@@ -40,9 +42,19 @@ func makeIdentifier(id string) string {
 	return result
 }
 
+func (b CodeBlock) traceUsages() {
+	k := strings.Split(b.Content, "\n")
+	for i := 0; i < len(k); i++ {
+		if match := linkDetect.FindStringSubmatch(k[i]); match != nil {
+			codeUseMap[match[2]] = append(codeUseMap[match[2]], b.Name)
+		}
+	}
+}
+
 func (b CodeBlock) ToHTML() string {
 	result := make([]string, 0)
 	result = append(result, `<div class="codeblock" id="`+makeIdentifier(b.Name)+`">`)
+
 	result = append(result, `<header class="codeblock-title">`)
 	result = append(result, `<a href="#`+makeIdentifier(b.Name)+`">`+b.Name+`</a>`)
 	result = append(result, `</header>`)
@@ -51,16 +63,26 @@ func (b CodeBlock) ToHTML() string {
 	s := strings.ReplaceAll(b.Content, `&`, `&amp;`)
 	s = strings.ReplaceAll(s, `<`, `&lt;`)
 	s = strings.ReplaceAll(s, `>`, `&gt;`)
-
 	k := strings.Split(s, "\n")
 	for i := 0; i < len(k); i++ {
 		if match := linkDetect.FindStringSubmatch(k[i]); match != nil {
 			k[i] = fmt.Sprintf(`%s<a href="#%s">&#12298; %s &#12299;</a>`, match[1], makeIdentifier(match[2]), match[2])
 		}
 	}
-
 	result = append(result, strings.Join(k, "\n"))
 	result = append(result, "</code></pre>")
+
+	result = append(result, `<footer class="codeblock-footer">`)
+	if n := len(codeUseMap[b.Name]); n > 0 {
+		result = append(result, `<span>Used by </span><ul>`)
+		for i := 0; i < n; i++ {
+			which := codeUseMap[b.Name][i]
+			result = append(result, fmt.Sprintf(`<li><a href="#%s">%s</a></li>`, makeIdentifier(which), which))
+		}
+		result = append(result, `</ul>`)
+	}
+	result = append(result, `</footer>`)
+
 	result = append(result, `</div>`)
 	return strings.Join(result, "\n")
 }
@@ -84,6 +106,13 @@ func Weave(filenames ...string) error {
 	b, err := ToBlocks(lines)
 	if err != nil {
 		return err
+	}
+
+	for _, v := range b {
+		switch t := v.(type) {
+		case CodeBlock:
+			t.traceUsages()
+		}
 	}
 
 	for _, v := range b {
