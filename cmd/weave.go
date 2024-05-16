@@ -9,7 +9,7 @@ import (
 )
 
 var weaveCmd = &cobra.Command{
-	Use:   "weave",
+	Use:   "weave source1.md source2.md...",
 	Short: "Generate a web page",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
