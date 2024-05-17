@@ -47,5 +47,12 @@ func ToBlocks(lines []string) (Blocks, error) {
 			lineBuffer = append(lineBuffer, v)
 		}
 	}
+
+	// Add the final block, if it is a prose block
+	if !codeMode {
+		result = append(result, ProseBlock{
+			Content: strings.Join(lineBuffer, "\n"),
+		})
+	}
 	return result, nil
 }
