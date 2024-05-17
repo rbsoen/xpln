@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"bytes"
 
 	"github.com/gomarkdown/markdown"
 	"github.com/gomarkdown/markdown/html"
@@ -16,6 +17,21 @@ import (
 // @{Name of code block} syntax.
 var linkDetect = regexp.MustCompile(
 	`^(\s*)@{(.+)}\s*$`,
+)
+
+// These templates may be used in prose blocks
+// to insert a special list
+
+// `{{ table of contents }} inserts the ToC from
+// all prose blocks
+var proseBlockTOCCommand = regexp.MustCompile(
+	`(<p>\s*)?\{\{\s*table of contents\s*\}\}(\s*</p>)?`,
+)
+
+// `{{ index }} inserts the index of all code
+// blocks
+var proseBlockIndexCommand = regexp.MustCompile(
+	`(<p>\s*)?\{\{\s*index\s*\}\}(\s*<p>)?`,
 )
 
 // Used for the "used by" indicators for
@@ -47,11 +63,20 @@ func Weave(filenames ...string) error {
 		return err
 	}
 
+	index := make([]string, 0)
+	wholeProse := ""
+
 	// 3. Track where each code block is used
 	// in other code blocks
+	// Also, track the names of every code block for
+	// the index list and concatenate every prose block
+	// to generate a ToC.
 	for _, v := range b {
 		switch t := v.(type) {
+		case ProseBlock:
+			wholeProse += t.Content + "\n"
 		case CodeBlock:
+			index = append(index, t.Name)
 			t.traceUsages()
 		}
 	}
@@ -62,7 +87,19 @@ func Weave(filenames ...string) error {
 		default:
 			return fmt.Errorf("unexpected type %T", t)
 		case ProseBlock:
-			fmt.Println(t.ToHTML())
+			r := t.ToHTML()
+			r = proseBlockTOCCommand.ReplaceAllStringFunc(r, func(_ string) string {
+				return toTOC(wholeProse)
+			})
+			r = proseBlockIndexCommand.ReplaceAllStringFunc(r, func(_ string) string {
+				x := `<div class="index"><nav><ul>`+"\n"
+				for _, v := range index {
+					x += `<li><a href="#`+makeIdentifier(v)+`">`+v+`</a></li>`+"\n"
+				}
+				x += `</ul></nav></div>`
+				return  x
+			})
+			fmt.Println(r)
 		case CodeBlock:
 			fmt.Println(t.ToHTML())
 		}
@@ -144,4 +181,15 @@ func (b ProseBlock) ToHTML() string {
 		html.RendererOptions{Flags: html.CommonFlags},
 	)
 	return string(markdown.Render(doc, r))
+}
+
+func toTOC (text string) string {
+	p := parser.NewWithExtensions(parser.CommonExtensions | parser.AutoHeadingIDs)
+	doc := p.Parse([]byte(text))
+	r := html.NewRenderer(
+		html.RendererOptions{Flags: html.TOC},
+	)
+	var b bytes.Buffer
+	r.RenderHeader(&b, doc)
+	return `<div class="toc">` + b.String() + `</div>`
 }
