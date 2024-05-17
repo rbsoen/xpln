@@ -38,7 +38,7 @@ var proseBlockIndexCommand = regexp.MustCompile(
 // each code block
 var codeUseMap = make(map[string][]string)
 
-func Weave(filenames ...string) error {
+func Weave(filenames ...string) (string, error) {
 	lines := make([]string, 0)
 
 	// 1. `cat` every text file together
@@ -46,7 +46,7 @@ func Weave(filenames ...string) error {
 	for _, filename := range filenames {
 		file, err := os.Open(filename)
 		if err != nil {
-			return err
+			return "", err
 		}
 		defer file.Close()
 
@@ -60,7 +60,7 @@ func Weave(filenames ...string) error {
 	// of prose and code
 	b, err := ToBlocks(lines)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	index := make([]string, 0)
@@ -81,11 +81,12 @@ func Weave(filenames ...string) error {
 		}
 	}
 
+	resultLines := make([]string, 0)
 	// 4. Render the results
 	for _, v := range b {
 		switch t := v.(type) {
 		default:
-			return fmt.Errorf("unexpected type %T", t)
+			return "", fmt.Errorf("unexpected type %T", t)
 		case ProseBlock:
 			r := t.ToHTML()
 			r = proseBlockTOCCommand.ReplaceAllStringFunc(r, func(_ string) string {
@@ -99,12 +100,12 @@ func Weave(filenames ...string) error {
 				x += `</ul></nav></div>`
 				return  x
 			})
-			fmt.Println(r)
+			resultLines = append(resultLines, r)
 		case CodeBlock:
-			fmt.Println(t.ToHTML())
+			resultLines = append(resultLines, t.ToHTML())
 		}
 	}
-	return err
+	return strings.Join(resultLines, "\n"), nil
 }
 
 func (b CodeBlock) traceUsages() {

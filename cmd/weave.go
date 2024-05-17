@@ -16,11 +16,12 @@ var weaveCmd = &cobra.Command{
 			fmt.Println("must provide at least 1 file")
 			os.Exit(1)
 		}
-		err := internal.Weave(args...)
+		output, err := internal.Weave(args...)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		fmt.Println(output)
 	},
 }
 
