@@ -21,7 +21,21 @@ var weaveCmd = &cobra.Command{
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		// TODO: configurable template
+		fmt.Println(`
+		<!DOCTYPE html>
+		<html>
+			<head>
+				<meta charset="utf-8">
+				<meta name="viewport" content="width=device-width,height=device-height,initial-scale=1">
+			</head>
+			<body>
+		`)
 		fmt.Println(output)
+		fmt.Println(`
+			</body>
+		</html>
+		`)
 	},
 }
 
