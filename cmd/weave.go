@@ -28,6 +28,8 @@ var weaveCmd = &cobra.Command{
 			<head>
 				<meta charset="utf-8">
 				<meta name="viewport" content="width=device-width,height=device-height,initial-scale=1">
+				<link rel="stylesheet" href="style.css" media="screen">
+				<link rel="stylesheet" href="style.print.css" media="print">
 			</head>
 			<body>
 		`)
