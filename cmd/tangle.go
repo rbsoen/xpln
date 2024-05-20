@@ -11,6 +11,14 @@ import (
 var tangleCmd = &cobra.Command{
 	Use:   "tangle out_dir source1.md source2.md...",
 	Short: "Extract source code",
+	Long: `
+Extracts usable source code out of a literate program.
+
+Files are generated out of code blocks that start with a forward slash (/), and
+any code references within are evaluated recursively.
+
+Do be careful not to reference its own code block!`,
+	Example: "tangle src 001_intro.md 002_explanation.md 003_conclusion.md",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			fmt.Println("must provide output directory")

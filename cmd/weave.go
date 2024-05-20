@@ -11,6 +11,17 @@ import (
 var weaveCmd = &cobra.Command{
 	Use:   "weave source1.md source2.md...",
 	Short: "Generate a web page",
+	Long:`
+Generates an HTML document out of a literate program.
+
+This command does not generate separate HTML documents, but rather concatenates
+all parts into a single document for reading on the web or for printing into
+a PDF.
+
+A minimal shell will be provided for the document. It assumes, in the same
+directory, a style.css file for use on the web, as well as a style.print.css
+for printing.`,
+	Example: "xpln weave 001_intro.md 002_explanation.md 003_conclusion > index.html",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			fmt.Println("must provide at least 1 file")
