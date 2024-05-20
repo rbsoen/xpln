@@ -70,3 +70,11 @@ h1 {
 .codeblock-footer li:not(:last-of-type):after {
   content: ', ';
 }
+
+img {
+  max-width: 60%;
+  margin: 2em auto;
+  display: block;
+  filter: invert(1);
+}
+

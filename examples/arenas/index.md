@@ -23,7 +23,12 @@ struct Arena
 };
 ```
 
-Allocating something is as simple as giving away the pointer to base + offset, where the offset is actually the number of bytes allocated. Not much else to keep track of. For a memory address let's say `0x8000`, when you allocate 5 bytes it will give you back the same memory address, but the next allocation will return `0x8005` as the address.
+Allocating something is as simple as giving away the pointer to base + offset, where the offset is actually the number of bytes allocated. Not much else to keep track of. The offset is a shorthand for how many bytes are allocated in the backing memory:
+
+![Arena buffer allocation](pic01.svg)
+
+
+For a memory address let's say `0x8000`, when you allocate 5 bytes it will give you back the same memory address, but the next allocation will return `0x8005` as the address.
 
 It's a "malloc"—but we are not setting aside some block of memory independently, rather we're "taking" free bytes away from the backing memory.
 
