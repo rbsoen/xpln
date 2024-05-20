@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,height=device-height,initial-scale=1">
+  <link rel="stylesheet" href="style.css" media="screen">
+  <link rel="stylesheet" href="style.print.css" media="print">
+</head>
+<body>
+<h1 id="arena-allocation">
+  Arena allocation
+</h1>
+<h2 id="table-of-contents">
+  Table of contents
+</h2>
+<div class="toc">
+  <nav>
+    <ul>
+      <li>
+        <a href="#arena-allocation">
+          Arena allocation
+        </a>
+        <ul>
+          <li>
+            <a href="#table-of-contents">
+              Table of contents
+            </a>
+          </li>
+          <li>
+            <a href="#code-block-index">
+              Code block index
+            </a>
+          </li>
+          <li>
+            <a href="#what-is-an-arena">
+              What is an arena?
+            </a>
+          </li>
+          <li>
+            <a href="#a-practical-example">
+              A practical example
+            </a>
+            <ul>
+              <li>
+                <a href="#final-program">
+                  Final program
+                </a>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <a href="#references">
+              References
+            </a>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </nav>
+</div>
+<h2 id="code-block-index">
+  Code block index
+</h2>
+<div class="index">
+  <nav>
+    <ul>
+      <li>
+        <a href="#arena-struct">
+          Arena struct
+        </a>
+      </li>
+      <li>
+        <a href="#-malloc--function">
+          "malloc" function
+        </a>
+      </li>
+      <li>
+        <a href="#-free--function">
+          "free" function
+        </a>
+      </li>
+      <li>
+        <a href="#state-struct">
+          State struct
+        </a>
+      </li>
+      <li>
+        <a href="#entity-struct">
+          Entity struct
+        </a>
+      </li>
+      <li>
+        <a href="#set-memory-base">
+          Set memory base
+        </a>
+      </li>
+      <li>
+        <a href="#-calloc--function">
+          "calloc" function
+        </a>
+      </li>
+      <li>
+        <a href="#entity-allocation">
+          Entity allocation
+        </a>
+      </li>
+      <li>
+        <a href="#entity-freeing">
+          Entity freeing
+        </a>
+      </li>
+      <li>
+        <a href="#the--free-everything--function">
+          The "free everything" function
+        </a>
+      </li>
+      <li>
+        <a href="#initialize-arena-and-state">
+          Initialize arena and state
+        </a>
+      </li>
+      <li>
+        <a href="#allocate-and-deallocate-a-couple-of-entities">
+          Allocate and deallocate a couple of entities
+        </a>
+      </li>
+      <li>
+        <a href="#entry-point">
+          Entry point
+        </a>
+      </li>
+      <li>
+        <a href="#includes">
+          Includes
+        </a>
+      </li>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </nav>
+</div>
+<h2 id="what-is-an-arena">
+  What is an arena?
+</h2>
+<p>
+  The arena is one of the simplest memory management strategies available. Here&rsquo;s what I know about it.
+</p>
+<p>
+  An
+  <strong>
+    arena
+  </strong>
+  (or region) is just a block of memory put aside at the start the program to do whatever with it. While every pointer allocated through the standard
+  <code>
+    malloc
+  </code>
+  assumes individual lifetimes, where each of them needs to be freed manually at some point, arena allocation can be taught of as a &ldquo;dynamic stack&rdquo;.
+</p>
+<p>
+  To begin with, here&rsquo;s the struct that holds the arena data. Not much, just a pointer to the buffer itself and variables to track its size and how much of it is used.
+</p>
+<div class="codeblock" id="arena-struct">
+  <header class="codeblock-title">
+    <a href="#arena-struct">
+      Arena struct
+    </a>
+  </header>
+  <pre><code class="language-c">
+struct Arena
+{
+    uint8_t* area;
+    size_t size;
+    size_t used;
+};
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<p>
+  Allocating something is as simple as giving away the pointer to base + offset, where the offset is actually the number of bytes allocated. Not much else to keep track of. The offset is a shorthand for how many bytes are allocated in the backing memory:
+</p>
+<p>
+  <img src="pic01.svg" alt="" />
+</p>
+<p>
+  For a memory address let&rsquo;s say
+  <code>
+    0x8000
+  </code>
+  , when you allocate 5 bytes it will give you back the same memory address, but the next allocation will return
+  <code>
+    0x8005
+  </code>
+  as the address.
+</p>
+<p>
+  It&rsquo;s a &ldquo;malloc&rdquo;—but we are not setting aside some block of memory independently, rather we&rsquo;re &ldquo;taking&rdquo; free bytes away from the backing memory.
+</p>
+<div class="codeblock" id="-malloc--function">
+  <header class="codeblock-title">
+    <a href="#-malloc--function">
+      "malloc" function
+    </a>
+  </header>
+  <pre><code class="language-c">
+void *take (struct Arena *a, size_t n)
+{
+    void *result;
+
+    // See if we would've run out of
+    // memory when allocating.
+    if (a-&gt;used + n &gt; a-&gt;size)
+    {
+        // If so, give up here.
+        return NULL;
+    }
+
+    // Otherwise, increase the space used
+    // and give a pointer to the beginning
+    // of the space.
+    result = a-&gt;area + a-&gt;used;
+    a-&gt;used += n;
+
+    return result;
+}
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<p>
+  &ldquo;Free&rdquo;ing is also possible, in some sense; in that the number of bytes taken is simply decreased. Because of the &ldquo;stack&rdquo;-like nature of these kinds of allocations, freeing a pointer allocated from the backing memory will not be valid unless
+  <em>
+    all
+  </em>
+  of the pointers succeeding it are freed, first.
+</p>
+<div class="codeblock" id="-free--function">
+  <header class="codeblock-title">
+    <a href="#-free--function">
+      "free" function
+    </a>
+  </header>
+  <pre><code class="language-c">
+void give (struct Arena *a, size_t n)
+{
+    a-&gt;used -= n;
+    return;
+}
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<h2 id="a-practical-example">
+  A practical example
+</h2>
+<p>
+  Let&rsquo;s imagine a program (like a game) that uses this system. The program manages a state and some amount of entities.
+</p>
+<div class="codeblock" id="state-struct">
+  <header class="codeblock-title">
+    <a href="#state-struct">
+      State struct
+    </a>
+  </header>
+  <pre><code class="language-c">
+struct State
+{
+    struct Arena *arena;
+    struct Entity *first_free;
+};
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="entity-struct">
+  <header class="codeblock-title">
+    <a href="#entity-struct">
+      Entity struct
+    </a>
+  </header>
+  <pre><code class="language-c">
+struct Entity
+{
+    struct Entity *next;
+    int x;
+    int y;
+};
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="set-memory-base">
+  <header class="codeblock-title">
+    <a href="#set-memory-base">
+      Set memory base
+    </a>
+  </header>
+  <pre><code class="language-c">
+uint8_t area[80] = { 0 };
+
+/* simulate uninit'd memory */
+for (size_t i = 0; i &lt; sizeof(area); i++)
+{
+    area[i] = rand() % 0xff;
+}
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#entry-point">
+          Entry point
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="-calloc--function">
+  <header class="codeblock-title">
+    <a href="#-calloc--function">
+      "calloc" function
+    </a>
+  </header>
+  <pre><code class="language-c">
+void *takeZero (struct Arena *a, size_t n)
+{
+    void *res = take(a, n);
+    if (res == NULL)
+    {
+        return res;
+    }
+
+    memset(res, 0, n);
+    return res;
+}
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="entity-allocation">
+  <header class="codeblock-title">
+    <a href="#entity-allocation">
+      Entity allocation
+    </a>
+  </header>
+  <pre><code class="language-c">
+struct Entity *alloc_entity(struct State *s)
+{
+    struct Entity *res = s-&gt;first_free;
+    if (res == NULL)
+    {
+        /* initializes the Entity by zero-filling it */
+        /* -&gt;next == NULL */
+        return takeZero(s-&gt;arena, sizeof(struct Entity));
+    }
+    s-&gt;first_free = s-&gt;first_free-&gt;next;
+    return res;
+}
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="entity-freeing">
+  <header class="codeblock-title">
+    <a href="#entity-freeing">
+      Entity freeing
+    </a>
+  </header>
+  <pre><code class="language-c">
+void release_entity(struct State *s, struct Entity *e)
+{
+    /* Technically the entity isn't freed */
+    e-&gt;next = s-&gt;first_free;
+    s-&gt;first_free = e;
+}
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="the--free-everything--function">
+  <header class="codeblock-title">
+    <a href="#the--free-everything--function">
+      The "free everything" function
+    </a>
+  </header>
+  <pre><code class="language-c">
+void reset (struct Arena *a)
+{
+    a-&gt;used = 0;
+}
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="initialize-arena-and-state">
+  <header class="codeblock-title">
+    <a href="#initialize-arena-and-state">
+      Initialize arena and state
+    </a>
+  </header>
+  <pre><code class="language-c">
+struct Arena a = {
+    .area = area,
+    .size = sizeof(area),
+    .used = 0,
+};
+
+struct State s = {
+    .arena = &amp;a,
+    .first_free = NULL,
+};
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#entry-point">
+          Entry point
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="allocate-and-deallocate-a-couple-of-entities">
+  <header class="codeblock-title">
+    <a href="#allocate-and-deallocate-a-couple-of-entities">
+      Allocate and deallocate a couple of entities
+    </a>
+  </header>
+  <pre><code class="language-c">
+struct Entity *entity_a = alloc_entity(&amp;s);
+struct Entity *entity_b = alloc_entity(&amp;s);
+
+release_entity(&amp;s, entity_a);
+release_entity(&amp;s, entity_b);
+
+struct Entity *entity_c = alloc_entity(&amp;s);
+
+release_entity(&amp;s, entity_c);
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#entry-point">
+          Entry point
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<h3 id="final-program">
+  Final program
+</h3>
+<div class="codeblock" id="entry-point">
+  <header class="codeblock-title">
+    <a href="#entry-point">
+      Entry point
+    </a>
+  </header>
+  <pre><code class="language-c">
+int main (void)
+{
+    <a href="#set-memory-base">&#12298; Set memory base &#12299;</a>
+    <a href="#initialize-arena-and-state">&#12298; Initialize arena and state &#12299;</a>
+    <a href="#allocate-and-deallocate-a-couple-of-entities">&#12298; Allocate and deallocate a couple of entities &#12299;</a>
+    return 0;
+}
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="includes">
+  <header class="codeblock-title">
+    <a href="#includes">
+      Includes
+    </a>
+  </header>
+  <pre><code class="language-c">
+#include &lt;stdint.h&gt;
+#include &lt;stddef.h&gt;
+#include &lt;string.h&gt;
+#include &lt;stdlib.h&gt;
+</code></pre>
+  <footer class="codeblock-footer">
+    <span>
+      Used by
+    </span>
+    <ul>
+      <li>
+        <a href="#-arenas-c">
+          /arenas.c
+        </a>
+      </li>
+    </ul>
+  </footer>
+</div>
+<div class="codeblock" id="-arenas-c">
+  <header class="codeblock-title">
+    <a href="#-arenas-c">
+      /arenas.c
+    </a>
+  </header>
+  <pre><code class="language-c">
+<a href="#includes">&#12298; Includes &#12299;</a>
+
+/* Struct defines */
+<a href="#arena-struct">&#12298; Arena struct &#12299;</a>
+<a href="#entity-struct">&#12298; Entity struct &#12299;</a>
+<a href="#state-struct">&#12298; State struct &#12299;</a>
+
+/* Function defines */
+<a href="#-malloc--function">&#12298; "malloc" function &#12299;</a>
+<a href="#-calloc--function">&#12298; "calloc" function &#12299;</a>
+<a href="#-free--function">&#12298; "free" function &#12299;</a>
+<a href="#entity-allocation">&#12298; Entity allocation &#12299;</a>
+<a href="#entity-freeing">&#12298; Entity freeing &#12299;</a>
+<a href="#the--free-everything--function">&#12298; The "free everything" function &#12299;</a>
+
+/* Main */
+<a href="#entry-point">&#12298; Entry point &#12299;</a>
+</code></pre>
+  <footer class="codeblock-footer"></footer>
+</div>
+<h2 id="references">
+  References
+</h2>
+<ul>
+  <li>
+    <a href="https://www.gingerbill.org/article/2019/02/15/memory-allocation-strategies-003/">
+      https://www.gingerbill.org/article/2019/02/15/memory-allocation-strategies-003/
+    </a>
+  </li>
+  <li>
+    <a href="https://www.rfleury.com/p/untangling-lifetimes-the-arena-allocator">
+      https://www.rfleury.com/p/untangling-lifetimes-the-arena-allocator
+    </a>
+  </li>
+</ul>
