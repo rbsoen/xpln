@@ -6,6 +6,7 @@ import (
 	"xpln/internal"
 
 	"github.com/spf13/cobra"
+	"github.com/yosssi/gohtml"
 )
 
 var weaveCmd = &cobra.Command{
@@ -33,7 +34,8 @@ for printing.`,
 			os.Exit(1)
 		}
 		// TODO: configurable template
-		fmt.Println(`
+		out := ""
+		out += `
 		<!DOCTYPE html>
 		<html>
 			<head>
@@ -43,12 +45,13 @@ for printing.`,
 				<link rel="stylesheet" href="style.print.css" media="print">
 			</head>
 			<body>
-		`)
-		fmt.Println(output)
-		fmt.Println(`
+		`
+		out += output
+		out += `
 			</body>
 		</html>
-		`)
+		`
+		fmt.Println(gohtml.Format(out))
 	},
 }
 
